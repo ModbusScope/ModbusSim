@@ -26,6 +26,12 @@ jobs:
           name: modbussim-linux
           path: ModbusSim*.AppImage
 
+      - name: Cache Linux artifact
+        uses: actions/cache/save@v6
+        with:
+          path: ModbusSim*.AppImage
+          key: linux-artifact-${{ github.run_id }}
+
   windows:
     runs-on: windows-2022
     
@@ -51,4 +57,67 @@ jobs:
         with:
           name: modbusscope-windows
           path: |
+            ModbusSim.zip
+
+      - name: Cache Windows artifact
+        uses: actions/cache/save@v6
+        with:
+          path: ModbusSim.zip
+          key: windows-artifact-${{ github.run_id }}
+          enableCrossOsArchive: true
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [linux, windows]
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Wait for caches to propagate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wait_for_key() {
+            local key="$1"
+            echo "Waiting for cache key: $key"
+            for i in $(seq 1 12); do
+              if gh cache list --repo ${{ github.repository }} --key "$key" | grep -q "$key"; then
+                echo "  $key available"; return 0
+              fi
+              echo "  not yet (attempt $i/12), retrying in 10s..."
+              sleep 10
+            done
+            echo "  timed out after 2 minutes waiting for $key"; return 1
+          }
+          wait_for_key "linux-artifact-${{ github.run_id }}" & P1=$!
+          wait_for_key "windows-artifact-${{ github.run_id }}" & P2=$!
+          wait $P1 && wait $P2
+
+      - name: Restore Linux artifact
+        uses: actions/cache/restore@v6
+        with:
+          path: ModbusSim*.AppImage
+          key: linux-artifact-${{ github.run_id }}
+          fail-on-cache-miss: true
+
+      - name: Restore Windows artifact
+        uses: actions/cache/restore@v6
+        with:
+          path: ModbusSim.zip
+          key: windows-artifact-${{ github.run_id }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+
+      - name: Publish dev release
+        uses: softprops/action-gh-release@v3.0.0
+        with:
+          tag_name: latest-dev
+          name: Latest development build
+          prerelease: true
+          files: |
+            ModbusSim*.AppImage
             ModbusSim.zip
