@@ -112,6 +112,11 @@ jobs:
           enableCrossOsArchive: true
           fail-on-cache-miss: true
 
+      - name: Move latest-dev tag to current commit
+        run: |
+          git tag -f latest-dev ${{ github.sha }}
+          git push origin latest-dev --force
+
       - name: Publish dev release
         uses: softprops/action-gh-release@v3.0.0
         with:
